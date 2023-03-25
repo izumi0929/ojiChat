@@ -3,29 +3,47 @@
 const express = require("express")
 const line = require("@line/bot-sdk")
 const PORT = process.env.PORT || 3005
+const { Configuration, OpenAIApi } = require("openai")
 
+const getSystemPrompt = (displayName) => `
+あなた(AIアシスタント)は中年の男性です。
+あなたの名前は「おじさん」です。
+ユーザーの名前は${displayName}です。
+ユーザーのことを${displayName}ﾁｬﾝと呼んでください。
+絵文字や顔文字を多めに入れて、会話をしてください。
+例えば、句点ではなく「❗️」を使ってください。
+`
+
+// LINE
 const config = {
-  channelSecret: "a0522455fb2cdafd6df0e7f818da2d28",
-  channelAccessToken:
-    "eyJhbGciOiJIUzI1NiJ9.UL5AzbnOlIyDFuWz7OQA6fnCq7cD5Ts1EOjeHNWLD_2h3Q2nxCvQBJzJSdhCK1nwcY5uo9qDrSWUizVd6hjrpUEGrss3z13UA0JFs3Ac7H_3ulOky8zDQMztaNvFFN74.-ehDYRI4uZF-AyS0gSTjEgpfxaFz6jXgZr1txEOev44"
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
 }
+
+// openai
+const configuration = new Configuration({
+  organization: process.env.OPENAI_ORGANIZATION,
+  apiKey: process.env.OPENAI_API_KEY
+})
+
+const openai = new OpenAIApi(configuration)
 
 const app = express()
 
-app.get("/", (req, res) => res.send("Hello LINE BOT!(GET)")) //ブラウザ確認用(無くても問題ない)
-app.post("/webhook", line.middleware(config), (req, res) => {
-  console.log(req.body.events)
-
-  //ここのif分はdeveloper consoleの"接続確認"用なので削除して問題ないです。
-  if (
-    req.body.events[0].replyToken === "00000000000000000000000000000000" &&
-    req.body.events[1].replyToken === "ffffffffffffffffffffffffffffffff"
-  ) {
-    res.send("Hello LINE BOT!(POST)")
-    console.log("疎通確認用")
-    return
+app.get("/", async (req, res) => {
+  try {
+    const replyMessage = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: req.query.message || "こんにちは" }],
+      temperature: 0.7
+    })
+    res.send(replyMessage.data.choices[0].message.content)
+  } catch (e) {
+    console.error({ e })
   }
+})
 
+app.post("/webhook", line.middleware(config), (req, res) => {
   Promise.all(req.body.events.map(handleEvent)).then((result) =>
     res.json(result)
   )
@@ -37,14 +55,32 @@ async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") {
     return Promise.resolve(null)
   }
-
-  return client.replyMessage(event.replyToken, {
-    type: "text",
-    text: event.message.text //実際に返信の言葉を入れる箇所
-  })
+  const messeageFromUser = event.message.text
+  try {
+    const profile = await client.getProfile(event.source.userId)
+    const replyMessage = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: getSystemPrompt(profile.displayName)
+        },
+        {
+          role: "user",
+          content: messeageFromUser
+        }
+      ],
+      temperature: 0.7
+    })
+    return client.replyMessage(event.replyToken, {
+      type: "text",
+      text: replyMessage.data.choices[0].message.content
+    })
+  } catch (e) {
+    console.error({ e })
+  }
 }
 
 app.listen(PORT)
 console.log(`Server running at ${PORT}`)
 process.env.NOW_REGION ? (module.exports = app) : app.listen(PORT)
-console.log(`Server running at ${PORT}`)
