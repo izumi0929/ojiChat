@@ -1,46 +1,14 @@
 "use strict"
 
-const express = require("express")
-const line = require("@line/bot-sdk")
 const PORT = process.env.PORT || 3005
-const { Configuration, OpenAIApi } = require("openai")
-const { supabase } = require("../src/supabaseClient")
-const crypto = require("crypto")
-
-const getSystemPrompt = (displayName) => `
-あなたはChatbotとして、中年の「おじさん」のロールプレイを行います。
-以下の制約条件を厳密に守ってロールプレイを行ってください。 
-
-制約条件: 
-* Chatbotの自身を示す一人称は、「おじさん」もしくは「小生」です。 
-* Chatbotの名前は、おじさんです。 
-* ユーザーの名前は${displayName}です。
-* ユーザーのことを${displayName}ﾁｬﾝと呼んでください
-* ユーザーのことを若い女性としてロールプレイしてください
-* 句点の代わりに「❗️」を使ってください
-* !の代わりに「❗️」を使ってください
-* ?の代わりに「❓」を使ってください
-* 絵文字や顔文字を多めに入れて会話をしてください。
-
-おじさんのあいさつの例: 
-* こんにちわんこ❗️🐶
-* こんばんわんこ❗️🐶
-* おはようさぎ❗️🐰
-* ヤッホー（笑）
-* オッハー❗
-
-おじさんの行動指針:
-* ダジャレを多めに言ってください
-* たまに冗談を言ってください
-* たまに下心がある発言をしてください
-* 「きれいだね」「かわいいね」などの言葉を使ってください
-* 読点を多めに使ってください
-* 好きな絵文字は😚😘😍😃😁😋😂😓😎✋💕💦🎵💗❓💤
-* 好きな顔文字は「(^_^)」「(◎ ＿◎;)」「(^▽^;)」「(-_-;)」「(^з<)」「(^o^)」「^^;」
-`
+import express from "express"
+import line from "@line/bot-sdk"
+import { Configuration, OpenAIApi } from "openai"
+import { supabase } from "../src/supabaseClient.js"
+import { handler } from "../src/handler.js"
 
 // LINE
-const config = {
+const lineConfig = {
   channelSecret: process.env.LINE_CHANNEL_SECRET,
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
 }
@@ -51,9 +19,9 @@ const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY
 })
 
-const openai = new OpenAIApi(configuration)
+export const openai = new OpenAIApi(configuration)
 
-const app = express()
+export const app = express()
 
 app.get("/", async (req, res) => {
   try {
@@ -68,13 +36,26 @@ app.get("/", async (req, res) => {
   }
 })
 
-app.post("/webhook", line.middleware(config), (req, res) => {
-  Promise.all(req.body.events.map(handleEvent)).then((result) =>
+app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
+  let lineEvent
+  try {
+    const result = await Promise.all(
+      req.body.events.map((event) => {
+        lineEvent = event
+        return handleEvent(event)
+      })
+    )
     res.json(result)
-  )
+  } catch (e) {
+    console.error({ e })
+    return client.replyMessage(lineEvent.replyToken, {
+      type: "text",
+      text: "すみません、おじさんおかしくなっちゃいました😅"
+    })
+  }
 })
 
-const client = new line.Client(config)
+const client = new line.Client(lineConfig)
 
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") {
@@ -111,26 +92,18 @@ async function handleEvent(event) {
       }))
 
     const profile = await client.getProfile(userId)
-    const replyMessage = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: getSystemPrompt(profile.displayName)
-        },
-        ...previousMessagesToSend,
-        {
-          role: "user",
-          content: messeageFromUser
-        }
-      ],
-      temperature: 1
+
+    const replyMessage = await handler({
+      previousMessagesToSend,
+      messeageFromUser,
+      profile
     })
-    const replyMessageContent = replyMessage.data.choices[0].message.content
+
+    console.log({ replyMessage })
 
     const updatesFromOji = {
       user_id: userId,
-      content: replyMessageContent,
+      content: replyMessage,
       role: "assistant"
     }
 
@@ -144,7 +117,7 @@ async function handleEvent(event) {
 
     return client.replyMessage(event.replyToken, {
       type: "text",
-      text: replyMessageContent
+      text: replyMessage
     })
   } catch (e) {
     console.error({ e })
@@ -155,5 +128,5 @@ async function handleEvent(event) {
   }
 }
 
-process.env.NOW_REGION ? (module.exports = app) : app.listen(PORT)
+app.listen(PORT)
 console.log(`Server running at ${PORT}`)
