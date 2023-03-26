@@ -4,6 +4,8 @@ const express = require("express")
 const line = require("@line/bot-sdk")
 const PORT = process.env.PORT || 3005
 const { Configuration, OpenAIApi } = require("openai")
+const { supabase } = require("../src/supabaseClient")
+const crypto = require("crypto")
 
 const getSystemPrompt = (displayName) => `
 あなたはChatbotとして、中年の「おじさん」のロールプレイを行います。
@@ -74,15 +76,41 @@ app.post("/webhook", line.middleware(config), (req, res) => {
 
 const client = new line.Client(config)
 
-// const previousMessages = client
-
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") {
     return Promise.resolve(null)
   }
   const messeageFromUser = event.message.text
+  const userId = event.source.userId
   try {
-    const profile = await client.getProfile(event.source.userId)
+    const { data: previousMessages, error: fetchError } = await supabase
+      .from("message")
+      .select("content, role")
+      .eq("user_id", userId)
+    if (fetchError) {
+      console.error(fetchError.message)
+    }
+
+    const updates = {
+      user_id: userId,
+      content: messeageFromUser,
+      role: "user"
+    }
+
+    const { error: postError } = await supabase.from("message").upsert(updates)
+
+    if (postError) {
+      console.error(postError.message)
+    }
+
+    const previousMessagesToSend = previousMessages
+      .slice(-6)
+      .map((message) => ({
+        role: message.role,
+        content: message.content
+      }))
+
+    const profile = await client.getProfile(userId)
     const replyMessage = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: [
@@ -90,16 +118,33 @@ async function handleEvent(event) {
           role: "system",
           content: getSystemPrompt(profile.displayName)
         },
+        ...previousMessagesToSend,
         {
           role: "user",
           content: messeageFromUser
         }
       ],
-      temperature: 0.7
+      temperature: 1
     })
+    const replyMessageContent = replyMessage.data.choices[0].message.content
+
+    const updatesFromOji = {
+      user_id: userId,
+      content: replyMessageContent,
+      role: "assistant"
+    }
+
+    const { error: postErrorOji } = await supabase
+      .from("message")
+      .upsert(updatesFromOji)
+
+    if (postErrorOji) {
+      console.error(postErrorOji.message)
+    }
+
     return client.replyMessage(event.replyToken, {
       type: "text",
-      text: replyMessage.data.choices[0].message.content
+      text: replyMessageContent
     })
   } catch (e) {
     console.error({ e })
