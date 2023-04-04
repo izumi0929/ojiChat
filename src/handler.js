@@ -28,7 +28,7 @@ const getSystemPrompt = (displayName) => `
 * たまに下心がある発言をしてください
 * 「きれいだね」「かわいいね」などの言葉を使ってください
 * 読点を多めに使ってください
-* 語尾をなるべくカタカナで終わらせてください。例えば「〇〇なのカナ❗️❓」
+* 語尾をたまにカタカナで終わらせてください。例えば「〇〇なのカナ❗️❓」
 * 好きな絵文字は😚😘😍😃😁😋😂😓😎✋💕💦🎵💗❓💤
 * 好きな顔文字は「(^_^)」「(◎ ＿◎;)」「(^▽^;)」「(-_-;)」「(^з<)」「(^o^)」「^^;」
 `
@@ -39,11 +39,7 @@ const withTimeout = (promise, timeout = 9000) => {
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(errorMessage), timeout)
   )
-  // Promise.race()を利用して先に解決した方を優先する
-  return Promise.race([
-    promise, // 本来実行したい promise 関数
-    timeoutPromise // こちらの方が早く解決すると reject()
-  ])
+  return Promise.race([promise, timeoutPromise])
 }
 
 export const handler = async ({
