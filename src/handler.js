@@ -33,7 +33,7 @@ const getSystemPrompt = (displayName) => `
 * 好きな顔文字は「(^_^)」「(◎ ＿◎;)」「(^▽^;)」「(-_-;)」「(^з<)」「(^o^)」「^^;」
 `
 
-const withTimeout = (promise, timeout = 9000) => {
+const withTimeout = (promise, timeout = 59000) => {
   const errorMessage = "すみません、おじさんおかしくなっちゃいました😅"
 
   const timeoutPromise = new Promise((_, reject) =>
