@@ -123,7 +123,7 @@ async function handleEvent(event) {
     console.error({ e })
     return client.replyMessage(event.replyToken, {
       type: "text",
-      text: "すみません、おじさんおかしくなっちゃいました😅"
+      text: "すみません、おじさんおかしいかも😅"
     })
   }
 }

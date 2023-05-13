@@ -34,7 +34,7 @@ const getSystemPrompt = (displayName) => `
 `
 
 const withTimeout = (promise, timeout = 59000) => {
-  const errorMessage = "すみません、おじさんおかしくなっちゃいました😅"
+  const errorMessage = "すみません、おじさには難しいかも😅"
 
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(errorMessage), timeout)
