@@ -27,7 +27,7 @@ app.get("/", async (req, res) => {
   try {
     const replyMessage = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: req.query.message || "こんにちは" }],
+      messages: [{ role: "user", content: req.query.message || "こんにちは!" }],
       temperature: 0.7
     })
     res.send(replyMessage.data.choices[0].message.content)
